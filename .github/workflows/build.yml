@@ -96,6 +96,9 @@ jobs:
       - name: Download YouTube IPA
         run: wget "${{ inputs.ipa_url }}" --no-verbose -O youtube.ipa
 
+      - name: Clone YouTubeHeader (required by YouTubeHeaders.h)
+        run: git clone --quiet --depth=1 https://github.com/PoomSmart/YouTubeHeader.git
+
       - name: Build YTLite Custom Tweak
         run: |
           cd main
