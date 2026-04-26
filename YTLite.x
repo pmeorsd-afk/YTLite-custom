@@ -331,7 +331,8 @@ static UIImage *YTImageNamed(NSString *imageName) {
         [optionsCopy addObject:option];
     }
 
-    if (ytlBool(@"extraSpeedOptions")) [self setValue:[optionsCopy copy] forKey:@"_options"];
+    // Always apply extra speeds (settings section may not be visible in all YouTube versions)
+    [self setValue:[optionsCopy copy] forKey:@"_options"];
 
     return %orig;
 }
@@ -343,7 +344,8 @@ static UIImage *YTImageNamed(NSString *imageName) {
     NSString *originalVersion = %orig;
     NSString *fakeVersion = @"18.18.2";
 
-    return (!ytlBool(@"classicQuality") && !ytlBool(@"extraSpeedOptions") && [originalVersion compare:fakeVersion options:NSNumericSearch] == NSOrderedDescending) ? originalVersion : fakeVersion;
+    // Always spoof version to bypass Premium speed check
+    return (!ytlBool(@"classicQuality") && [originalVersion compare:fakeVersion options:NSNumericSearch] == NSOrderedDescending) ? originalVersion : fakeVersion;
 }
 %end
 
