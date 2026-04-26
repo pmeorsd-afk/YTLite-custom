@@ -328,10 +328,6 @@ static void ytlSetFloatIvar(id obj, const char *name, float val) {
     Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
     if (iv) *(float *)((char *)(__bridge void *)obj + ivar_getOffset(iv)) = val;
 }
-static float ytlGetFloatIvar(id obj, const char *name) {
-    Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
-    return iv ? *(float *)((char *)(__bridge void *)obj + ivar_getOffset(iv)) : 0;
-}
 static id ytlGetObjIvar(id obj, const char *name) {
     Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
     return iv ? object_getIvar(obj, iv) : nil;
