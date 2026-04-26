@@ -14,11 +14,6 @@
 @property (nonatomic, readonly) NSArray *selectableAudioFormats;
 @end
 
-// Forward declaration so compiler knows setPlaybackRate: exists on overlay VC
-@interface YTMainAppVideoPlayerOverlayViewController (YTLSpeed)
-- (void)setPlaybackRate:(float)rate;
-@end
-
 // ─────────────────────────────────────────────
 // MARK: - Singleton download context
 // ─────────────────────────────────────────────
@@ -30,7 +25,6 @@
 @property (atomic, copy) NSArray  *videoFormats;
 @property (atomic, copy) NSArray  *audioFormats;
 @property (atomic, weak) UIViewController *sourceVC;
-@property (atomic, weak) UIViewController *overlayVC;  // YTMainAppVideoPlayerOverlayViewController
 @end
 
 @implementation YTLDLContext
@@ -282,63 +276,17 @@ static void showDownloadSheet(void) {
 // ─────────────────────────────────────────────
 
 // ─────────────────────────────────────────────
-// MARK: - Speed picker (calls setPlaybackRate: directly — no Premium needed)
+// MARK: - Add download button to player overlay
 // ─────────────────────────────────────────────
 
-static void showSpeedSheet(void) {
-    YTMainAppVideoPlayerOverlayViewController *overlayVC =
-        (YTMainAppVideoPlayerOverlayViewController *)[YTLDLContext shared].overlayVC;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        @try {
-            UIAlertController *alert = [UIAlertController
-                alertControllerWithTitle:@"⚡ בחר מהירות"
-                message:nil
-                preferredStyle:UIAlertControllerStyleActionSheet];
-
-            NSArray *speeds = @[@0.25, @0.5, @0.75, @1.0, @1.25, @1.5,
-                                @1.75, @2.0, @2.5, @3.0, @3.5, @4.0,
-                                @5.0, @6.0, @7.0, @8.0, @9.0, @10.0];
-            for (NSNumber *n in speeds) {
-                float rate = [n floatValue];
-                NSString *title = [NSString stringWithFormat:@"%.4g×", rate];
-                __weak YTMainAppVideoPlayerOverlayViewController *weakOverlay = overlayVC;
-                [alert addAction:[UIAlertAction
-                    actionWithTitle:title
-                    style:UIAlertActionStyleDefault
-                    handler:^(UIAlertAction *a) {
-                        @try {
-                            if ([weakOverlay respondsToSelector:@selector(setPlaybackRate:)])
-                                [weakOverlay setPlaybackRate:rate];
-                        } @catch (...) {}
-                    }]];
-            }
-            [alert addAction:[UIAlertAction actionWithTitle:@"ביטול" style:UIAlertActionStyleCancel handler:nil]];
-
-            UIViewController *top = [%c(YTUIUtils) topViewControllerForPresenting];
-            if (top) {
-                if (alert.popoverPresentationController) {
-                    alert.popoverPresentationController.sourceView = top.view;
-                    alert.popoverPresentationController.sourceRect =
-                        CGRectMake(top.view.bounds.size.width/2, top.view.bounds.size.height/2, 1, 1);
-                }
-                [top presentViewController:alert animated:YES completion:nil];
-            }
-        } @catch (...) {}
-    });
-}
-
 %hook YTMainAppVideoPlayerOverlayViewController
-
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    [YTLDLContext shared].overlayVC = self;
-}
-
-// Let YouTube show its original sheet — our YTDefaultSheetController hook adds our items
 - (void)handleMoreButtonPressed:(id)arg1 {
+    if (ytlBool(@"ytlDownloader")) {
+        showDownloadSheet();
+        return;
+    }
     %orig;
 }
-
 %end
 
 // ─────────────────────────────────────────────
@@ -347,7 +295,6 @@ static void showSpeedSheet(void) {
 // ─────────────────────────────────────────────
 
 static BOOL g_addedDLAction = NO;
-static BOOL g_addedSpeedAction = NO;
 
 %hook YTDefaultSheetController
 
@@ -355,11 +302,8 @@ static BOOL g_addedSpeedAction = NO;
                          animated:(BOOL)animated
                        completion:(void (^)(void))completion {
     g_addedDLAction = NO;
-    g_addedSpeedAction = NO;
 
     YTLDLContext *ctx = [YTLDLContext shared];
-
-    // Add download option
     if (ytlBool(@"ytlDownloader") && ctx.videoID.length > 0 && !g_addedDLAction) {
         g_addedDLAction = YES;
         @try {
@@ -369,19 +313,6 @@ static BOOL g_addedSpeedAction = NO;
                 secondaryIconImage:nil
                 accessibilityIdentifier:@"ytlite.download"
                 handler:^{ showDownloadSheet(); }]];
-        } @catch (...) {}
-    }
-
-    // Add speed picker option (always — works without settings)
-    if (ctx.overlayVC && !g_addedSpeedAction) {
-        g_addedSpeedAction = YES;
-        @try {
-            [self addAction:[%c(YTActionSheetAction)
-                actionWithTitle:@"⚡ שנה מהירות"
-                iconImage:[UIImage systemImageNamed:@"gauge.high"]
-                secondaryIconImage:nil
-                accessibilityIdentifier:@"ytlite.speed"
-                handler:^{ showSpeedSheet(); }]];
         } @catch (...) {}
     }
 

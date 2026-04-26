@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <Photos/Photos.h>
+#import <substrate.h>
 #import "Utils/NSBundle+YTLite.h"
 #import "Utils/YTLUserDefaults.h"
 #import "Utils/Reachability.h"
@@ -127,6 +128,27 @@
 @property (nonatomic, assign, readonly) CGFloat totalMediaTime;
 @property (nonatomic, assign, readonly) NSArray *selectableVideoFormats;
 - (void)setVideoFormatConstraint:(MLQuickMenuVideoQualitySettingFormatConstraint *)formatConstraint;
+- (void)playerRateDidChange:(float)rate;
+@end
+
+// YTSpeed interfaces
+@interface MLPlayerStickySettings : NSObject
+- (void)setRate:(float)rate;
+@end
+
+@interface HAMPlayerInternal : NSObject
+- (void)setRate:(float)rate;
+@end
+
+@interface MLHAMQueuePlayer : NSObject
+@property (nonatomic, strong) id playerEventCenter;
+@property (nonatomic, weak) id delegate;
+- (void)setRate:(float)rate;
+- (void)internalSetRate;
+@end
+
+@interface YTLocalPlaybackController : NSObject
+- (void)setPlaybackRate:(float)rate;
 @end
 
 @interface YTPlayerViewController : UIViewController

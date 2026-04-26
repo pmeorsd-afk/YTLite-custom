@@ -319,75 +319,64 @@ static UIImage *YTImageNamed(NSString *imageName) {
 }
 %end
 
-// ─── Extra Speed Options ─────────────────────────────────────────────────────
-// Helper: build augmented options array (safe, no crashes)
-static NSArray *ytlAugmentedSpeedOptions(NSArray *original) {
-    NSMutableArray *opts = original ? [original mutableCopy] : [NSMutableArray array];
-    NSArray *extra = @[@2.5, @3.0, @3.5, @4.0, @5.0, @6.0, @7.0, @8.0, @9.0, @10.0];
-    for (NSNumber *n in extra) {
-        float rate = [n floatValue];
-        BOOL exists = NO;
-        for (id opt in opts) {
-            @try { if (fabs([[opt valueForKey:@"rate"] floatValue] - rate) < 0.01) { exists = YES; break; } } @catch (...) {}
-        }
-        if (!exists) {
-            @try {
-                NSString *title = [NSString stringWithFormat:@"%.4g", rate];
-                Class cls = %c(YTVarispeedSwitchControllerOption);
-                if (cls) {
-                    id opt = [[cls alloc] initWithTitle:title rate:rate];
-                    if (opt) [opts addObject:opt];
-                }
-            } @catch (...) {}
-        }
-    }
-    return [opts copy];
-}
+// ─── YTSpeed (https://github.com/Lyvendia/YTSpeed) ───────────────────────────
+#define kYTLSpeedKey  @"YTLiteSpeed_PlaybackRate"
+#define kYTLDefRate   1.0f
 
 %hook YTVarispeedSwitchController
-
-// Approach A — hook setDelegate: (older YouTube)
-- (void)setDelegate:(id)arg1 {
-    @try {
-        NSMutableArray *opts = [[self valueForKey:@"_options"] mutableCopy];
-        if (opts) [self setValue:ytlAugmentedSpeedOptions(opts) forKey:@"_options"];
-    } @catch (...) {}
-    %orig;
-}
-
-// Approach B — hook options getter (newer YouTube)
-- (NSArray *)options {
-    return ytlAugmentedSpeedOptions(%orig);
-}
-
-// Approach C — hook varispeedOptions getter
-- (NSArray *)varispeedOptions {
-    return ytlAugmentedSpeedOptions(%orig);
-}
-
-%end
-
-// Approach D — bypass Premium check on selection by calling setPlaybackRate: directly
-%hook YTMainAppVideoPlayerOverlayViewController
-- (void)varispeedSwitchController:(id)controller didSelectOption:(id)option {
-    @try {
-        float rate = [[option valueForKey:@"rate"] floatValue];
-        if (rate > 0) {
-            [self setPlaybackRate:rate];
-            return;
+- (instancetype)init {
+    if ((self = %orig)) {
+        const int size = 18;
+        float speeds[] = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
+                          2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+        id opts[size];
+        for (int i = 0; i < size; ++i) {
+            NSString *t = [NSString stringWithFormat:@"%.4gx", speeds[i]];
+            opts[i] = [[%c(YTVarispeedSwitchControllerOption) alloc] initWithTitle:t rate:speeds[i]];
         }
-    } @catch (...) {}
-    %orig;
+        MSHookIvar<NSArray *>(self, "_options") = [NSArray arrayWithObjects:opts count:size];
+    }
+    return self;
 }
 %end
 
-// Temprorary Fix For 'Classic Video Quality' and 'Extra Speed Options'
+%hook YTLocalPlaybackController
+- (instancetype)initWithParentResponder:(id)a1 overlayFactory:(id)a2 playerView:(id)a3
+              playbackControllerDelegate:(id)a4 viewportSizeProvider:(id)a5
+    shouldDelayAdsPlaybackCoordinatorCreation:(BOOL)a6 {
+    float saved = [[NSUserDefaults standardUserDefaults] floatForKey:kYTLSpeedKey];
+    if ((self = %orig))
+        MSHookIvar<float>(self, "_restoredPlaybackRate") = saved == 0 ? kYTLDefRate : saved;
+    return self;
+}
+- (void)setPlaybackRate:(float)rate {
+    %orig;
+    [[NSUserDefaults standardUserDefaults] setFloat:rate forKey:kYTLSpeedKey];
+}
+%end
+
+%hook MLHAMQueuePlayer
+- (instancetype)initWithStickySettings:(id)a1 playerViewProvider:(id)a2 {
+    id result = %orig;
+    float saved = [[NSUserDefaults standardUserDefaults] floatForKey:kYTLSpeedKey];
+    [self setRate:saved == 0 ? kYTLDefRate : saved];
+    return result;
+}
+- (void)setRate:(float)rate {
+    MSHookIvar<float>(self, "_rate") = rate;
+    MSHookIvar<float>(self, "_preferredRate") = rate;
+    @try { [MSHookIvar<HAMPlayerInternal *>(self, "_player") setRate:rate]; } @catch (...) {}
+    @try { [MSHookIvar<MLPlayerStickySettings *>(self, "_stickySettings") setRate:rate]; } @catch (...) {}
+    @try { [self.playerEventCenter broadcastRateChange:rate]; } @catch (...) {}
+    @try { [(YTSingleVideoController *)self.delegate playerRateDidChange:rate]; } @catch (...) {}
+}
+%end
+
+// Temporary Fix For 'Classic Video Quality'
 %hook YTVersionUtils
 + (NSString *)appVersion {
     NSString *originalVersion = %orig;
     NSString *fakeVersion = @"18.18.2";
-
-    // Always spoof version to bypass Premium speed check
     return (!ytlBool(@"classicQuality") && [originalVersion compare:fakeVersion options:NSNumericSearch] == NSOrderedDescending) ? originalVersion : fakeVersion;
 }
 %end
@@ -397,12 +386,11 @@ static NSArray *ytlAugmentedSpeedOptions(NSArray *original) {
 - (void)setDetailText:(id)arg1 {
     NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
     NSString *appVersion = infoDictionary[@"CFBundleShortVersionString"];
-
-    if ([arg1 isEqualToString:@"18.18.2"]) {
-        arg1 = appVersion;
-    } %orig(arg1);
+    if ([arg1 isEqualToString:@"18.18.2"]) arg1 = appVersion;
+    %orig(arg1);
 }
 %end
+
 
 // Disable Snap To Chapter (https://github.com/qnblackcat/uYouPlus/blob/main/uYouPlus.xm#L457-464)
 %hook YTSegmentableInlinePlayerBarView
