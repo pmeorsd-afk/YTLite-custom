@@ -1,5 +1,10 @@
 #import <Foundation/Foundation.h>
-#import <roothide.h>
+
+// jbroot() is only available with roothide - define a no-op fallback for normal builds
+#ifndef jbroot
+#define jbroot(x) (x)
+#endif
+
 
 NS_ASSUME_NONNULL_BEGIN
 
