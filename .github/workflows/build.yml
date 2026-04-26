@@ -100,11 +100,7 @@ jobs:
         run: git clone --quiet --depth=1 https://github.com/PoomSmart/YouTubeHeader.git
 
       - name: Clone protobuf objectivec headers (required by YTNativeShare.x)
-        run: |
-          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/protocolbuffers/protobuf.git
-          cd protobuf
-          git sparse-checkout set --no-cone objectivec
-          git checkout
+        run: git clone --quiet --depth=1 --branch v3.21.12 https://github.com/protocolbuffers/protobuf.git
 
       - name: Build YTLite Custom Tweak
         run: |
