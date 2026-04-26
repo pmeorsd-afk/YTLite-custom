@@ -14,6 +14,12 @@
 @property (nonatomic, readonly) NSArray *selectableAudioFormats;
 @end
 
+// Forward declaration so compiler knows setPlaybackRate: exists on overlay VC
+@interface YTMainAppVideoPlayerOverlayViewController : UIViewController
+- (void)setPlaybackRate:(float)rate;
+@end
+
+
 // ─────────────────────────────────────────────
 // MARK: - Singleton download context
 // ─────────────────────────────────────────────
@@ -281,7 +287,8 @@ static void showDownloadSheet(void) {
 // ─────────────────────────────────────────────
 
 static void showSpeedSheet(void) {
-    UIViewController *overlayVC = [YTLDLContext shared].overlayVC;
+    YTMainAppVideoPlayerOverlayViewController *overlayVC =
+        (YTMainAppVideoPlayerOverlayViewController *)[YTLDLContext shared].overlayVC;
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             UIAlertController *alert = [UIAlertController
@@ -295,7 +302,7 @@ static void showSpeedSheet(void) {
             for (NSNumber *n in speeds) {
                 float rate = [n floatValue];
                 NSString *title = [NSString stringWithFormat:@"%.4g×", rate];
-                __weak UIViewController *weakOverlay = overlayVC;
+                __weak YTMainAppVideoPlayerOverlayViewController *weakOverlay = overlayVC;
                 [alert addAction:[UIAlertAction
                     actionWithTitle:title
                     style:UIAlertActionStyleDefault
