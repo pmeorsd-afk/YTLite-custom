@@ -323,18 +323,33 @@ static UIImage *YTImageNamed(NSString *imageName) {
 #define kYTLSpeedKey  @"YTLiteSpeed_PlaybackRate"
 #define kYTLDefRate   1.0f
 
+// Pure ObjC ivar helpers (replaces MSHookIvar which requires C++)
+static void ytlSetFloatIvar(id obj, const char *name, float val) {
+    Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
+    if (iv) *(float *)((char *)(__bridge void *)obj + ivar_getOffset(iv)) = val;
+}
+static float ytlGetFloatIvar(id obj, const char *name) {
+    Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
+    return iv ? *(float *)((char *)(__bridge void *)obj + ivar_getOffset(iv)) : 0;
+}
+static id ytlGetObjIvar(id obj, const char *name) {
+    Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
+    return iv ? object_getIvar(obj, iv) : nil;
+}
+
 %hook YTVarispeedSwitchController
 - (instancetype)init {
     if ((self = %orig)) {
-        const int size = 18;
         float speeds[] = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
                           2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
-        id opts[size];
-        for (int i = 0; i < size; ++i) {
+        int size = sizeof(speeds) / sizeof(float);
+        NSMutableArray *opts = [NSMutableArray arrayWithCapacity:size];
+        for (int i = 0; i < size; i++) {
             NSString *t = [NSString stringWithFormat:@"%.4gx", speeds[i]];
-            opts[i] = [[%c(YTVarispeedSwitchControllerOption) alloc] initWithTitle:t rate:speeds[i]];
+            id opt = [[%c(YTVarispeedSwitchControllerOption) alloc] initWithTitle:t rate:speeds[i]];
+            if (opt) [opts addObject:opt];
         }
-        MSHookIvar<NSArray *>(self, "_options") = [NSArray arrayWithObjects:opts count:size];
+        @try { [self setValue:[opts copy] forKey:@"_options"]; } @catch (...) {}
     }
     return self;
 }
@@ -346,7 +361,7 @@ static UIImage *YTImageNamed(NSString *imageName) {
     shouldDelayAdsPlaybackCoordinatorCreation:(BOOL)a6 {
     float saved = [[NSUserDefaults standardUserDefaults] floatForKey:kYTLSpeedKey];
     if ((self = %orig))
-        MSHookIvar<float>(self, "_restoredPlaybackRate") = saved == 0 ? kYTLDefRate : saved;
+        ytlSetFloatIvar(self, "_restoredPlaybackRate", saved == 0 ? kYTLDefRate : saved);
     return self;
 }
 - (void)setPlaybackRate:(float)rate {
@@ -363,11 +378,15 @@ static UIImage *YTImageNamed(NSString *imageName) {
     return result;
 }
 - (void)setRate:(float)rate {
-    MSHookIvar<float>(self, "_rate") = rate;
-    MSHookIvar<float>(self, "_preferredRate") = rate;
-    @try { [MSHookIvar<HAMPlayerInternal *>(self, "_player") setRate:rate]; } @catch (...) {}
-    @try { [MSHookIvar<MLPlayerStickySettings *>(self, "_stickySettings") setRate:rate]; } @catch (...) {}
-    @try { [self.playerEventCenter broadcastRateChange:rate]; } @catch (...) {}
+    ytlSetFloatIvar(self, "_rate", rate);
+    ytlSetFloatIvar(self, "_preferredRate", rate);
+    @try { [(id)ytlGetObjIvar(self, "_player") performSelector:@selector(setRate:) withObject:@(rate)]; } @catch (...) {}
+    @try { [(id)ytlGetObjIvar(self, "_stickySettings") performSelector:@selector(setRate:) withObject:@(rate)]; } @catch (...) {}
+    @try {
+        SEL sel = NSSelectorFromString(@"broadcastRateChange:");
+        id ec = self.playerEventCenter;
+        if ([ec respondsToSelector:sel]) ((void(*)(id,SEL,float))objc_msgSend)(ec, sel, rate);
+    } @catch (...) {}
     @try { [(YTSingleVideoController *)self.delegate playerRateDidChange:rate]; } @catch (...) {}
 }
 %end
@@ -390,6 +409,7 @@ static UIImage *YTImageNamed(NSString *imageName) {
     %orig(arg1);
 }
 %end
+
 
 
 // Disable Snap To Chapter (https://github.com/qnblackcat/uYouPlus/blob/main/uYouPlus.xm#L457-464)
