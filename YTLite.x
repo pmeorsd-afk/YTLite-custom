@@ -319,22 +319,65 @@ static UIImage *YTImageNamed(NSString *imageName) {
 }
 %end
 
-// Extra Speed Options
-%hook YTVarispeedSwitchController
-- (void)setDelegate:(id)arg1 {
-    NSMutableArray *optionsCopy = [[self valueForKey:@"_options"] mutableCopy];
-    NSArray *speedOptions = @[@"2.5", @"3", @"3.5", @"4", @"5", @"6", @"7", @"8", @"9", @"10"];
-
-    for (NSString *title in speedOptions) {
-        float rate = [title floatValue];
-        YTVarispeedSwitchControllerOption *option = [[%c(YTVarispeedSwitchControllerOption) alloc] initWithTitle:title rate:rate];
-        [optionsCopy addObject:option];
+// ─── Extra Speed Options ─────────────────────────────────────────────────────
+// Helper: build augmented options array (safe, no crashes)
+static NSArray *ytlAugmentedSpeedOptions(NSArray *original) {
+    NSMutableArray *opts = original ? [original mutableCopy] : [NSMutableArray array];
+    NSArray *extra = @[@2.5, @3.0, @3.5, @4.0, @5.0, @6.0, @7.0, @8.0, @9.0, @10.0];
+    for (NSNumber *n in extra) {
+        float rate = [n floatValue];
+        BOOL exists = NO;
+        for (id opt in opts) {
+            @try { if (fabs([[opt valueForKey:@"rate"] floatValue] - rate) < 0.01) { exists = YES; break; } } @catch (...) {}
+        }
+        if (!exists) {
+            @try {
+                NSString *title = [NSString stringWithFormat:@"%.4g", rate];
+                Class cls = %c(YTVarispeedSwitchControllerOption);
+                if (cls) {
+                    id opt = [[cls alloc] initWithTitle:title rate:rate];
+                    if (opt) [opts addObject:opt];
+                }
+            } @catch (...) {}
+        }
     }
+    return [opts copy];
+}
 
-    // Always apply extra speeds (settings section may not be visible in all YouTube versions)
-    [self setValue:[optionsCopy copy] forKey:@"_options"];
+%hook YTVarispeedSwitchController
 
-    return %orig;
+// Approach A — hook setDelegate: (older YouTube)
+- (void)setDelegate:(id)arg1 {
+    @try {
+        NSMutableArray *opts = [[self valueForKey:@"_options"] mutableCopy];
+        if (opts) [self setValue:ytlAugmentedSpeedOptions(opts) forKey:@"_options"];
+    } @catch (...) {}
+    %orig;
+}
+
+// Approach B — hook options getter (newer YouTube)
+- (NSArray *)options {
+    return ytlAugmentedSpeedOptions(%orig);
+}
+
+// Approach C — hook varispeedOptions getter
+- (NSArray *)varispeedOptions {
+    return ytlAugmentedSpeedOptions(%orig);
+}
+
+%end
+
+// Approach D — bypass Premium check on selection by calling setPlaybackRate: directly
+%hook YTMainAppVideoPlayerOverlayViewController
+- (void)varispeedSwitchController:(id)controller didSelectOption:(id)option {
+    @try {
+        float rate = [[option valueForKey:@"rate"] floatValue];
+        if (rate > 0) {
+            [self setPlaybackRate:rate];
+            return;
+        }
+    } @catch (...) {}
+    %orig;
 }
 %end
 
