@@ -15,10 +15,9 @@
 @end
 
 // Forward declaration so compiler knows setPlaybackRate: exists on overlay VC
-@interface YTMainAppVideoPlayerOverlayViewController : UIViewController
+@interface YTMainAppVideoPlayerOverlayViewController (YTLSpeed)
 - (void)setPlaybackRate:(float)rate;
 @end
-
 
 // ─────────────────────────────────────────────
 // MARK: - Singleton download context
